@@ -1,0 +1,1009 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>设备维保管理</title>
+    <!-- 加载本地 sql-wasm.js -->
+    <script src="sql-wasm.js"></script>
+    <script>
+        // 确保 initSqlJs 在全局可用（某些 UMD 版本不会自动挂载）
+        if (typeof initSqlJs !== 'undefined') {
+            window.initSqlJs = initSqlJs;
+        }
+        console.log('✅ sql-wasm.js 已加载，initSqlJs 类型:', typeof window.initSqlJs);
+    </script>
+    <style>
+        /* ========== 样式（与之前相同，已精简） ========== */
+        * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+        :root {
+            --primary: #2b6cb0; --primary-light: #4a90d9; --primary-dark: #1a365d;
+            --bg: #f0f4f8; --card: #ffffff; --shadow: 0 4px 16px rgba(0,0,0,0.08);
+            --radius: 16px; --radius-sm: 10px; --text: #1a202c; --text-secondary: #4a5568;
+            --text-muted: #a0aec0; --border: #e2e8f0; --success: #48bb78; --danger: #fc8181;
+            --safe-bottom: env(safe-area-inset-bottom, 12px);
+        }
+        html,body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background: var(--bg); color: var(--text); font-size: 15px; line-height:1.5; height:100%; overflow:hidden; }
+        .app-container { max-width:480px; margin:0 auto; height:100%; display:flex; flex-direction:column; background:var(--bg); position:relative; overflow:hidden; }
+        .app-header { background:var(--primary); color:#fff; padding:14px 18px; padding-top:calc(14px + env(safe-area-inset-top,0px)); display:flex; align-items:center; justify-content:space-between; flex-shrink:0; position:relative; z-index:10; box-shadow:0 2px 12px rgba(43,108,176,0.3); }
+        .app-header .title { font-size:18px; font-weight:700; letter-spacing:0.5px; flex:1; text-align:center; }
+        .app-header .back-btn { font-size:24px; cursor:pointer; width:40px; height:40px; display:flex; align-items:center; justify-content:center; border-radius:50%; background:rgba(255,255,255,0.15); transition:background 0.2s; border:none; color:#fff; font-weight:300; }
+        .app-header .back-btn:active { background:rgba(255,255,255,0.3); }
+        .app-header .header-action { width:40px; height:40px; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:22px; border-radius:50%; background:rgba(255,255,255,0.15); transition:background 0.2s; border:none; color:#fff; }
+        .app-header .header-action:active { background:rgba(255,255,255,0.3); }
+        .app-header .placeholder { width:40px; visibility:hidden; }
+        .page { flex:1; overflow-y:auto; overflow-x:hidden; padding:16px 16px calc(16px + var(--safe-bottom)); display:none; -webkit-overflow-scrolling:touch; scroll-behavior:smooth; }
+        .page.active { display:block; }
+        .card { background:var(--card); border-radius:var(--radius); box-shadow:var(--shadow); padding:16px; margin-bottom:14px; transition:transform 0.15s; }
+        .card:active { transform:scale(0.99); }
+        .data-toolbar { display:flex; gap:10px; margin-bottom:12px; }
+        .data-toolbar .btn { flex:1; padding:10px 0; font-size:14px; border-radius:var(--radius-sm); border:none; font-weight:600; cursor:pointer; transition:background 0.2s, transform 0.1s; background:var(--card); box-shadow:var(--shadow); color:var(--text); text-align:center; }
+        .data-toolbar .btn:active { transform:scale(0.97); }
+        .data-toolbar .btn-primary { background:var(--primary); color:#fff; }
+        .data-toolbar .btn-primary:active { background:var(--primary-dark); }
+        .data-toolbar .btn-outline { background:transparent; color:var(--primary); border:2px solid var(--primary); }
+        .data-toolbar .btn-outline:active { background:#ebf4ff; }
+        .filter-bar { display:flex; gap:10px; margin-bottom:16px; flex-wrap:wrap; background:var(--card); border-radius:var(--radius); padding:12px 14px; box-shadow:var(--shadow); }
+        .filter-bar .filter-group { flex:1; min-width:100px; }
+        .filter-bar label { display:block; font-size:12px; font-weight:600; color:var(--text-secondary); margin-bottom:2px; }
+        .filter-bar select, .filter-bar input { width:100%; padding:8px 10px; border:1.5px solid var(--border); border-radius:var(--radius-sm); font-size:14px; background:#fafbfc; color:var(--text); appearance:none; -webkit-appearance:none; transition:border 0.2s; outline:none; }
+        .filter-bar select:focus, .filter-bar input:focus { border-color:var(--primary-light); background:#fff; }
+        .filter-bar .filter-btn { background:var(--primary); color:#fff; border:none; border-radius:var(--radius-sm); padding:8px 20px; font-size:14px; font-weight:600; cursor:pointer; transition:background 0.2s; align-self:flex-end; flex-shrink:0; height:40px; min-width:60px; }
+        .filter-bar .filter-btn:active { background:var(--primary-dark); }
+        .filter-bar .filter-btn.reset { background:var(--text-muted); }
+        .filter-bar .filter-btn.reset:active { background:#888; }
+        .device-item { cursor:pointer; padding:14px 16px; border-left:4px solid var(--primary-light); transition:background 0.15s; position:relative; }
+        .device-item:active { background:#f7fafc; }
+        .device-item .device-name { font-size:17px; font-weight:700; color:var(--text); }
+        .device-item .device-meta { font-size:13px; color:var(--text-secondary); margin-top:4px; display:flex; flex-wrap:wrap; gap:6px 14px; }
+        .device-item .device-status { display:inline-block; padding:2px 12px; border-radius:20px; font-size:12px; font-weight:600; margin-top:6px; }
+        .device-item .device-status.status-normal { background:#c6f6d5; color:#22543d; }
+        .device-item .device-status.status-repair { background:#fed7d7; color:#9b2c2c; }
+        .device-item .device-status.status-maintain { background:#fefcbf; color:#744210; }
+        .device-item .device-arrow { position:absolute; right:16px; top:50%; transform:translateY(-50%); color:var(--text-muted); font-size:18px; }
+        .device-item .device-badge { font-size:11px; background:var(--primary-light); color:#fff; padding:1px 10px; border-radius:12px; margin-left:6px; display:inline-block; }
+        .empty-state { text-align:center; padding:50px 20px; color:var(--text-muted); }
+        .empty-state .empty-icon { font-size:56px; margin-bottom:12px; opacity:0.6; }
+        .empty-state .empty-text { font-size:16px; }
+        .empty-state .empty-hint { font-size:13px; margin-top:6px; color:var(--text-secondary); }
+        .detail-info .info-row { display:flex; padding:6px 0; border-bottom:1px solid var(--border); font-size:14px; }
+        .detail-info .info-row:last-child { border-bottom:none; }
+        .detail-info .info-label { color:var(--text-secondary); width:90px; flex-shrink:0; font-weight:500; }
+        .detail-info .info-value { flex:1; color:var(--text); word-break:break-all; }
+        .detail-info .info-value .status-tag { display:inline-block; padding:1px 14px; border-radius:20px; font-size:12px; font-weight:600; }
+        .status-tag.tag-normal { background:#c6f6d5; color:#22543d; }
+        .status-tag.tag-repair { background:#fed7d7; color:#9b2c2c; }
+        .status-tag.tag-maintain { background:#fefcbf; color:#744210; }
+        .record-list { margin-top:4px; }
+        .record-item { padding:12px 0; border-bottom:1px solid var(--border); display:flex; align-items:flex-start; gap:12px; }
+        .record-item:last-child { border-bottom:none; }
+        .record-item .record-icon { width:38px; height:38px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:18px; flex-shrink:0; font-weight:700; color:#fff; }
+        .record-item .record-icon.type-repair { background:#fc8181; }
+        .record-item .record-icon.type-maintain { background:#68d391; }
+        .record-item .record-icon.type-debug { background:#63b3ed; }
+        .record-item .record-content { flex:1; min-width:0; }
+        .record-item .record-type { font-weight:600; font-size:15px; }
+        .record-item .record-desc { font-size:14px; color:var(--text-secondary); margin-top:1px; word-break:break-word; }
+        .record-item .record-time { font-size:12px; color:var(--text-muted); margin-top:2px; }
+        .record-item .record-del { color:var(--text-muted); cursor:pointer; font-size:16px; padding:4px 6px; border-radius:6px; transition:background 0.2s; flex-shrink:0; margin-top:2px; background:none; border:none; }
+        .record-item .record-del:active { background:#fee2e2; color:var(--danger); }
+        .fab { position:fixed; bottom:calc(24px + var(--safe-bottom)); right:24px; width:58px; height:58px; border-radius:50%; background:var(--primary); color:#fff; border:none; font-size:32px; box-shadow:0 6px 20px rgba(43,108,176,0.4); cursor:pointer; transition:transform 0.2s, box-shadow 0.2s; display:flex; align-items:center; justify-content:center; z-index:20; }
+        .fab:active { transform:scale(0.92); box-shadow:0 3px 12px rgba(43,108,176,0.3); }
+        .form-group { margin-bottom:14px; }
+        .form-group label { display:block; font-size:13px; font-weight:600; color:var(--text-secondary); margin-bottom:4px; }
+        .form-group .required { color:var(--danger); margin-left:2px; }
+        .form-group input, .form-group select, .form-group textarea { width:100%; padding:10px 14px; border:1.5px solid var(--border); border-radius:var(--radius-sm); font-size:15px; background:#fafbfc; color:var(--text); transition:border 0.2s, background 0.2s; outline:none; font-family:inherit; }
+        .form-group input:focus, .form-group select:focus, .form-group textarea:focus { border-color:var(--primary-light); background:#fff; }
+        .form-group textarea { min-height:70px; resize:vertical; }
+        .form-row { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+        .btn { display:inline-flex; align-items:center; justify-content:center; padding:12px 24px; border:none; border-radius:var(--radius-sm); font-size:16px; font-weight:600; cursor:pointer; transition:background 0.2s, transform 0.1s; width:100%; color:#fff; }
+        .btn:active { transform:scale(0.98); }
+        .btn-primary { background:var(--primary); }
+        .btn-primary:active { background:var(--primary-dark); }
+        .btn-success { background:var(--success); }
+        .btn-success:active { background:#38a169; }
+        .btn-danger { background:var(--danger); }
+        .btn-danger:active { background:#f56565; }
+        .btn-outline { background:transparent; color:var(--primary); border:2px solid var(--primary); }
+        .btn-outline:active { background:#ebf4ff; }
+        .btn-sm { padding:8px 16px; font-size:14px; width:auto; }
+        .btn-group { display:flex; gap:10px; margin-top:6px; flex-wrap:wrap; }
+        .btn-group .btn { flex:1; min-width:80px; }
+        .modal-overlay { position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.45); backdrop-filter:blur(4px); -webkit-backdrop-filter:blur(4px); z-index:100; display:none; align-items:flex-end; justify-content:center; animation:fadeIn 0.25s; }
+        .modal-overlay.active { display:flex; }
+        .modal-overlay .modal-box { background:var(--card); border-radius:var(--radius) var(--radius) 0 0; width:100%; max-width:480px; max-height:88vh; overflow-y:auto; padding:20px 20px calc(20px + var(--safe-bottom)); animation:slideUp 0.3s ease-out; -webkit-overflow-scrolling:touch; }
+        .modal-overlay .modal-box .modal-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; padding-bottom:12px; border-bottom:1px solid var(--border); }
+        .modal-overlay .modal-box .modal-header h3 { font-size:18px; font-weight:700; }
+        .modal-overlay .modal-box .modal-close { font-size:28px; cursor:pointer; color:var(--text-muted); background:none; border:none; padding:0 6px; line-height:1; }
+        .modal-overlay .modal-box .modal-close:active { color:var(--text); }
+        @keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
+        @keyframes slideUp { from { transform:translateY(40px); opacity:0; } to { transform:translateY(0); opacity:1; } }
+        @media (max-width:420px) { .filter-bar .filter-group { min-width:70px; } .form-row { grid-template-columns:1fr; } .detail-info .info-row { flex-wrap:wrap; } .detail-info .info-label { width:100%; font-weight:600; color:var(--text-secondary); } .detail-info .info-value { width:100%; padding-left:0; } }
+        .page::-webkit-scrollbar { width:4px; }
+        .page::-webkit-scrollbar-thumb { background:var(--text-muted); border-radius:4px; }
+        .page::-webkit-scrollbar-track { background:transparent; }
+        .loading-text { text-align:center; padding:30px; color:var(--text-muted); }
+        .action-row { display:flex; gap:10px; margin-top:10px; }
+        .action-row .btn { flex:1; }
+        #importFileInput { display:none; }
+        #sqlStatus { font-size:12px; padding:4px 12px; border-radius:12px; background:var(--card); box-shadow:var(--shadow); display:inline-block; margin-left:8px; }
+    </style>
+</head>
+<body>
+
+<div class="app-container" id="app">
+    <header class="app-header">
+        <button class="back-btn" id="globalBackBtn" style="visibility:hidden;">‹</button>
+        <span class="title" id="pageTitle">设备维保管理</span>
+        <button class="header-action" id="headerRightBtn" title="添加设备">＋</button>
+    </header>
+
+    <div class="page active" id="pageList">
+        <div class="data-toolbar">
+            <button class="btn btn-primary" onclick="exportDatabase()">📤 导出 .db</button>
+            <button class="btn btn-outline" onclick="document.getElementById('importFileInput').click()">📥 导入 .db</button>
+            <input type="file" id="importFileInput" accept=".db" onchange="importDatabase(this.files[0])">
+        </div>
+        <div style="text-align:right; margin-bottom:6px;">
+            <span id="sqlStatus">⏳ 加载 sql.js ...</span>
+        </div>
+
+        <div class="filter-bar">
+            <div class="filter-group"><label>使用车间</label><select id="filterWorkshop"><option value="">全部车间</option></select></div>
+            <div class="filter-group"><label>使用工序</label><select id="filterProcess"><option value="">全部工序</option></select></div>
+            <button class="filter-btn" id="filterBtn">筛选</button>
+            <button class="filter-btn reset" id="resetFilterBtn">重置</button>
+        </div>
+
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; padding:0 4px;">
+            <span style="font-size:14px; color:var(--text-secondary);">设备总数 <strong id="totalCount">0</strong></span>
+            <span style="font-size:13px; color:var(--text-muted);" id="filterHint">显示全部</span>
+        </div>
+
+        <div id="deviceListContainer"><div class="loading-text">加载中...</div></div>
+    </div>
+
+    <div class="page" id="pageDetail">
+        <div id="detailContent"></div>
+        <button class="fab" id="fabAddRecord">＋</button>
+    </div>
+
+    <!-- 模态框：设备 -->
+    <div class="modal-overlay" id="modalDevice">
+        <div class="modal-box">
+            <div class="modal-header"><h3 id="modalDeviceTitle">添加设备</h3><button class="modal-close" data-close="modalDevice">×</button></div>
+            <form id="deviceForm" autocomplete="off">
+                <input type="hidden" id="editDeviceId" value="">
+                <div class="form-group"><label>设备ID <span class="required">*</span></label><input type="text" id="fDeviceId" placeholder="如: EQ-001" required></div>
+                <div class="form-row"><div class="form-group"><label>设备型号 <span class="required">*</span></label><input type="text" id="fModel" placeholder="型号" required></div><div class="form-group"><label>设备名称 <span class="required">*</span></label><input type="text" id="fName" placeholder="名称" required></div></div>
+                <div class="form-row"><div class="form-group"><label>启用时间</label><input type="date" id="fStartDate"></div><div class="form-group"><label>设备编号</label><input type="text" id="fDeviceNo" placeholder="设备编号"></div></div>
+                <div class="form-row"><div class="form-group"><label>固定资产号</label><input type="text" id="fFixedAssetNo" placeholder="固定资产号"></div><div class="form-group"><label>保养周期</label><input type="text" id="fMaintenanceCycle" placeholder="如: 每月/季度"></div></div>
+                <div class="form-row"><div class="form-group"><label>状态</label><select id="fStatus"><option value="正常">正常</option><option value="带维修">带维修</option><option value="带保养">带保养</option></select></div><div class="form-group"><label>上次保养时间</label><input type="date" id="fLastMaintenance"></div></div>
+                <div class="form-row"><div class="form-group"><label>使用车间 <span class="required">*</span></label><input type="text" id="fWorkshop" placeholder="车间名称" required></div><div class="form-group"><label>使用工序 <span class="required">*</span></label><input type="text" id="fProcess" placeholder="工序名称" required></div></div>
+                <button type="submit" class="btn btn-primary">保存设备</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- 模态框：维保记录 -->
+    <div class="modal-overlay" id="modalRecord">
+        <div class="modal-box">
+            <div class="modal-header"><h3>添加维保记录</h3><button class="modal-close" data-close="modalRecord">×</button></div>
+            <form id="recordForm" autocomplete="off">
+                <input type="hidden" id="recordEquipmentId" value="">
+                <div class="form-group"><label>记录类型 <span class="required">*</span></label><select id="fRecordType" required><option value="维修">🔧 维修</option><option value="保养">🛠 保养</option><option value="调试">⚙️ 调试</option></select></div>
+                <div class="form-group"><label>记录时间 <span class="required">*</span></label><input type="datetime-local" id="fRecordTime" required></div>
+                <div class="form-group"><label>描述 / 备注</label><textarea id="fRecordDesc" placeholder="请输入维保内容描述..."></textarea></div>
+                <button type="submit" class="btn btn-success">保存记录</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- 删除确认 -->
+    <div class="modal-overlay" id="modalConfirm">
+        <div class="modal-box" style="border-radius:var(--radius); max-width:360px; margin:auto;">
+            <div class="modal-header" style="border-bottom:none; padding-bottom:0;"><h3 style="font-size:17px;">确认删除</h3><button class="modal-close" data-close="modalConfirm">×</button></div>
+            <p style="padding:8px 0 16px; color:var(--text-secondary);" id="confirmMessage">确定要删除这条记录吗？</p>
+            <div class="btn-group"><button class="btn btn-outline btn-sm" data-close="modalConfirm">取消</button><button class="btn btn-danger btn-sm" id="confirmDeleteBtn">删除</button></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // ================================================================
+    // 0. sql.js 初始化（使用 initSqlJs）
+    // ================================================================
+    let SQL_MODULE = null;
+    let sqlInitPromise = null;
+
+    // 更新状态的辅助函数
+    function setSqlStatus(text, color) {
+        const el = document.getElementById('sqlStatus');
+        if (el) {
+            el.textContent = text;
+            el.style.color = color || '';
+        }
+    }
+
+    function initSqlJsModule() {
+        if (sqlInitPromise) return sqlInitPromise;
+
+        sqlInitPromise = new Promise((resolve, reject) => {
+            // 检查 initSqlJs 是否可用
+            if (typeof window.initSqlJs !== 'function') {
+                const err = new Error('initSqlJs 未定义，请确认 sql-wasm.js 已正确加载');
+                console.error(err);
+                setSqlStatus('⚠️ sql-wasm.js 未加载', '#fc8181');
+                reject(err);
+                return;
+            }
+
+            // 设置超时，防止加载卡死
+            let timeoutId = setTimeout(() => {
+                reject(new Error('sql.js 加载超时（10秒），请检查 sql-wasm.wasm 文件是否存在'));
+            }, 10000);
+
+            // 调用 initSqlJs（不传 locateFile，让库自动从当前目录加载 .wasm）
+            try {
+                window.initSqlJs(/* 不传参数，使用默认路径 */)
+                    .then(SQL => {
+                        clearTimeout(timeoutId);
+                        SQL_MODULE = SQL;
+                        setSqlStatus('✅ sql.js 已就绪', '#48bb78');
+                        console.log('✅ sql.js 初始化成功');
+                        resolve(SQL);
+                    })
+                    .catch(err => {
+                        clearTimeout(timeoutId);
+                        console.error('sql.js 初始化失败:', err);
+                        setSqlStatus('⚠️ sql.js 加载失败', '#fc8181');
+                        reject(err);
+                    });
+            } catch (err) {
+                clearTimeout(timeoutId);
+                console.error('调用 initSqlJs 出错:', err);
+                setSqlStatus('⚠️ 调用 initSqlJs 异常', '#fc8181');
+                reject(err);
+            }
+        });
+
+        return sqlInitPromise;
+    }
+
+    // 预加载 sql.js（不阻塞界面）
+    setTimeout(() => {
+        initSqlJsModule().catch(e => {
+            console.warn('sql.js 后台加载失败:', e.message);
+        });
+    }, 100);
+
+    // 等待 sql.js 就绪的函数（供导出/导入调用）
+    function waitForSQL() {
+        return new Promise((resolve, reject) => {
+            if (SQL_MODULE) {
+                resolve(SQL_MODULE);
+                return;
+            }
+            // 否则等待初始化完成
+            initSqlJsModule().then(resolve).catch(reject);
+        });
+    }
+
+    // ================================================================
+    // 1. IndexedDB 数据库层
+    // ================================================================
+    const DB_NAME = 'DeviceMaintenanceDB';
+    const DB_VERSION = 1;
+    const STORE_EQUIPMENT = 'equipment';
+    const STORE_RECORDS = 'maintenance_records';
+
+    let db = null;
+
+    function openDatabase() {
+        return new Promise((resolve, reject) => {
+            const request = indexedDB.open(DB_NAME, DB_VERSION);
+            request.onupgradeneeded = (event) => {
+                const db = event.target.result;
+                if (!db.objectStoreNames.contains(STORE_EQUIPMENT)) {
+                    const store = db.createObjectStore(STORE_EQUIPMENT, { keyPath: 'id', autoIncrement: true });
+                    store.createIndex('device_id', 'device_id', { unique: true });
+                    store.createIndex('workshop', 'workshop', { unique: false });
+                    store.createIndex('process', 'process', { unique: false });
+                }
+                if (!db.objectStoreNames.contains(STORE_RECORDS)) {
+                    const store = db.createObjectStore(STORE_RECORDS, { keyPath: 'id', autoIncrement: true });
+                    store.createIndex('equipment_id', 'equipment_id', { unique: false });
+                    store.createIndex('record_time', 'record_time', { unique: false });
+                }
+            };
+            request.onsuccess = (event) => { db = event.target.result; resolve(db); };
+            request.onerror = (event) => { reject(new Error('IndexedDB 打开失败: ' + event.target.error)); };
+        });
+    }
+
+    // ================================================================
+    // 2. 数据访问层
+    // ================================================================
+    function getAllFromStore(storeName) {
+        return new Promise((resolve, reject) => {
+            if (!db) return reject(new Error('数据库未初始化'));
+            const tx = db.transaction([storeName], 'readonly');
+            const store = tx.objectStore(storeName);
+            const request = store.getAll();
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+        });
+    }
+
+    function getFromStore(storeName, id) {
+        return new Promise((resolve, reject) => {
+            if (!db) return reject(new Error('数据库未初始化'));
+            const tx = db.transaction([storeName], 'readonly');
+            const store = tx.objectStore(storeName);
+            const request = store.get(id);
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+        });
+    }
+
+    function addToStore(storeName, data) {
+        return new Promise((resolve, reject) => {
+            if (!db) return reject(new Error('数据库未初始化'));
+            const tx = db.transaction([storeName], 'readwrite');
+            const store = tx.objectStore(storeName);
+            const request = store.add(data);
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+        });
+    }
+
+    function putToStore(storeName, data) {
+        return new Promise((resolve, reject) => {
+            if (!db) return reject(new Error('数据库未初始化'));
+            const tx = db.transaction([storeName], 'readwrite');
+            const store = tx.objectStore(storeName);
+            const request = store.put(data);
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+        });
+    }
+
+    function deleteFromStore(storeName, id) {
+        return new Promise((resolve, reject) => {
+            if (!db) return reject(new Error('数据库未初始化'));
+            const tx = db.transaction([storeName], 'readwrite');
+            const store = tx.objectStore(storeName);
+            const request = store.delete(id);
+            request.onsuccess = () => resolve();
+            request.onerror = () => reject(request.error);
+        });
+    }
+
+    function clearStore(storeName) {
+        return new Promise((resolve, reject) => {
+            if (!db) return reject(new Error('数据库未初始化'));
+            const tx = db.transaction([storeName], 'readwrite');
+            const store = tx.objectStore(storeName);
+            const request = store.clear();
+            request.onsuccess = () => resolve();
+            request.onerror = () => reject(request.error);
+        });
+    }
+
+    // --- 设备 ---
+    async function getAllEquipment(workshop = '', process = '') {
+        let devices = await getAllFromStore(STORE_EQUIPMENT);
+        if (workshop || process) {
+            devices = devices.filter(d => {
+                let match = true;
+                if (workshop) match = match && d.workshop === workshop;
+                if (process) match = match && d.process === process;
+                return match;
+            });
+        }
+        devices.sort((a, b) => b.id - a.id);
+        return devices;
+    }
+
+    function getEquipmentById(id) { return getFromStore(STORE_EQUIPMENT, id); }
+
+    async function addEquipment(data) {
+        const all = await getAllFromStore(STORE_EQUIPMENT);
+        if (all.some(d => d.device_id === data.device_id)) throw new Error('设备ID已存在');
+        return addToStore(STORE_EQUIPMENT, data);
+    }
+
+    async function updateEquipment(id, data) {
+        const all = await getAllFromStore(STORE_EQUIPMENT);
+        if (all.some(d => d.device_id === data.device_id && d.id !== id)) throw new Error('设备ID已存在');
+        data.id = id;
+        return putToStore(STORE_EQUIPMENT, data);
+    }
+
+    function deleteEquipment(id) {
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction([STORE_EQUIPMENT, STORE_RECORDS], 'readwrite');
+            const equipStore = tx.objectStore(STORE_EQUIPMENT);
+            const recordStore = tx.objectStore(STORE_RECORDS);
+            const index = recordStore.index('equipment_id');
+            const request = index.getAll(id);
+            request.onsuccess = () => {
+                const records = request.result;
+                for (const rec of records) recordStore.delete(rec.id);
+                equipStore.delete(id);
+                resolve();
+            };
+            request.onerror = () => reject(request.error);
+            tx.onerror = () => reject(tx.error);
+        });
+    }
+
+    async function getDistinctWorkshops() {
+        const devices = await getAllFromStore(STORE_EQUIPMENT);
+        const workshops = [...new Set(devices.map(d => d.workshop))];
+        workshops.sort();
+        return workshops;
+    }
+
+    async function getDistinctProcesses(workshop = '') {
+        let devices = await getAllFromStore(STORE_EQUIPMENT);
+        if (workshop) devices = devices.filter(d => d.workshop === workshop);
+        const processes = [...new Set(devices.map(d => d.process))];
+        processes.sort();
+        return processes;
+    }
+
+    // --- 维保记录 ---
+    function getRecordsByEquipment(equipmentId) {
+        return new Promise((resolve, reject) => {
+            if (!db) return reject(new Error('数据库未初始化'));
+            const tx = db.transaction([STORE_RECORDS], 'readonly');
+            const store = tx.objectStore(STORE_RECORDS);
+            const index = store.index('equipment_id');
+            const request = index.getAll(equipmentId);
+            request.onsuccess = () => {
+                const records = request.result;
+                records.sort((a, b) => {
+                    if (a.record_time > b.record_time) return -1;
+                    if (a.record_time < b.record_time) return 1;
+                    return b.id - a.id;
+                });
+                resolve(records);
+            };
+            request.onerror = () => reject(request.error);
+        });
+    }
+
+    function getAllRecords() { return getAllFromStore(STORE_RECORDS); }
+    function addRecord(data) { return addToStore(STORE_RECORDS, data); }
+    function deleteRecord(id) { return deleteFromStore(STORE_RECORDS, id); }
+
+    function updateEquipmentLastMaintenance(equipmentId, date) {
+        return new Promise((resolve, reject) => {
+            getEquipmentById(equipmentId).then(device => {
+                if (!device) { reject(new Error('设备不存在')); return; }
+                device.last_maintenance_date = date;
+                putToStore(STORE_EQUIPMENT, device).then(resolve).catch(reject);
+            }).catch(reject);
+        });
+    }
+
+    // ================================================================
+    // 3. 示例数据
+    // ================================================================
+    async function initSampleData() {
+        const devices = await getAllFromStore(STORE_EQUIPMENT);
+        if (devices.length > 0) return;
+        const samples = [
+            { device_id: 'EQ-001', model: 'CNC-500', name: '数控铣床', start_date: '2023-01-15', device_no: 'SN-001', fixed_asset_no: 'FA-1001', maintenance_cycle: '每月', status: '正常', last_maintenance_date: '2026-07-01', workshop: '机加工车间', process: '铣削' },
+            { device_id: 'EQ-002', model: 'LATHE-200', name: '数控车床', start_date: '2023-03-20', device_no: 'SN-002', fixed_asset_no: 'FA-1002', maintenance_cycle: '季度', status: '带保养', last_maintenance_date: '2026-06-15', workshop: '机加工车间', process: '车削' },
+            { device_id: 'EQ-003', model: 'MILL-300', name: '立式加工中心', start_date: '2024-02-10', device_no: 'SN-003', fixed_asset_no: 'FA-1003', maintenance_cycle: '每月', status: '正常', last_maintenance_date: '2026-07-20', workshop: '机加工车间', process: '铣削' },
+            { device_id: 'EQ-004', model: 'GRIND-100', name: '平面磨床', start_date: '2023-09-05', device_no: 'SN-004', fixed_asset_no: 'FA-1004', maintenance_cycle: '半年', status: '带维修', last_maintenance_date: '2026-05-10', workshop: '磨削车间', process: '平面磨削' },
+            { device_id: 'EQ-005', model: 'EDM-50', name: '电火花机床', start_date: '2024-06-01', device_no: 'SN-005', fixed_asset_no: 'FA-1005', maintenance_cycle: '季度', status: '正常', last_maintenance_date: '2026-07-25', workshop: '特种加工车间', process: '电火花' },
+            { device_id: 'EQ-006', model: 'WIRE-30', name: '线切割机床', start_date: '2023-11-12', device_no: 'SN-006', fixed_asset_no: 'FA-1006', maintenance_cycle: '每月', status: '正常', last_maintenance_date: '2026-07-28', workshop: '特种加工车间', process: '线切割' }
+        ];
+        for (const s of samples) await addToStore(STORE_EQUIPMENT, s);
+        const allDevices = await getAllFromStore(STORE_EQUIPMENT);
+        const recs = [
+            { equipment_id: allDevices[0].id, record_type: '保养', record_time: '2026-07-01T09:30:00', description: '定期保养，更换润滑油' },
+            { equipment_id: allDevices[0].id, record_type: '维修', record_time: '2026-06-20T14:00:00', description: '更换主轴轴承' },
+            { equipment_id: allDevices[1].id, record_type: '保养', record_time: '2026-06-15T10:00:00', description: '季度保养，检查精度' },
+            { equipment_id: allDevices[2].id, record_type: '调试', record_time: '2026-07-10T16:30:00', description: '新产品试制调试' },
+            { equipment_id: allDevices[3].id, record_type: '维修', record_time: '2026-05-10T08:00:00', description: '修复砂轮进给系统' },
+            { equipment_id: allDevices[4].id, record_type: '保养', record_time: '2026-07-25T11:00:00', description: '清理工作液系统' },
+            { equipment_id: allDevices[5].id, record_type: '调试', record_time: '2026-07-20T13:00:00', description: '换向系统调试' }
+        ];
+        for (const r of recs) await addToStore(STORE_RECORDS, r);
+    }
+
+    // ================================================================
+    // 4. 导出 / 导入 .db
+    // ================================================================
+    async function exportDatabase() {
+        try {
+            const SQL = await waitForSQL();
+            const devices = await getAllFromStore(STORE_EQUIPMENT);
+            const records = await getAllFromStore(STORE_RECORDS);
+
+            const db = new SQL.Database();
+            db.run(`CREATE TABLE equipment (
+                id INTEGER PRIMARY KEY, device_id TEXT NOT NULL, model TEXT NOT NULL, name TEXT NOT NULL,
+                start_date TEXT, device_no TEXT, fixed_asset_no TEXT, maintenance_cycle TEXT,
+                status TEXT, last_maintenance_date TEXT, workshop TEXT NOT NULL, process TEXT NOT NULL, created_at TEXT
+            )`);
+            db.run(`CREATE TABLE maintenance_records (
+                id INTEGER PRIMARY KEY, equipment_id INTEGER NOT NULL, record_type TEXT NOT NULL,
+                record_time TEXT NOT NULL, description TEXT, created_at TEXT,
+                FOREIGN KEY (equipment_id) REFERENCES equipment(id) ON DELETE CASCADE
+            )`);
+
+            const insertDev = db.prepare(`INSERT INTO equipment 
+                (id, device_id, model, name, start_date, device_no, fixed_asset_no, maintenance_cycle, status, last_maintenance_date, workshop, process, created_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+            for (const d of devices) {
+                insertDev.run([d.id, d.device_id, d.model, d.name, d.start_date || null, d.device_no || null,
+                    d.fixed_asset_no || null, d.maintenance_cycle || null, d.status || '正常',
+                    d.last_maintenance_date || null, d.workshop, d.process, d.created_at || null
+                ]);
+            }
+            insertDev.free();
+
+            const insertRec = db.prepare(`INSERT INTO maintenance_records 
+                (id, equipment_id, record_type, record_time, description, created_at)
+                VALUES (?,?,?,?,?,?)`);
+            for (const r of records) {
+                insertRec.run([r.id, r.equipment_id, r.record_type, r.record_time,
+                    r.description || null, r.created_at || null
+                ]);
+            }
+            insertRec.free();
+
+            const data = db.export();
+            const blob = new Blob([data], { type: 'application/x-sqlite3' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `device_backup_${new Date().toISOString().slice(0,10)}.db`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            alert('✅ 数据库导出成功！');
+        } catch (e) {
+            console.error(e);
+            alert('导出失败：' + e.message);
+        }
+    }
+
+    async function importDatabase(file) {
+        if (!file) return;
+        if (!file.name.endsWith('.db')) { alert('请选择 .db 文件'); return; }
+        if (!confirm('⚠️ 导入将完全覆盖当前所有数据，确认继续吗？')) return;
+
+        try {
+            const SQL = await waitForSQL();
+            const buffer = await file.arrayBuffer();
+            const data = new Uint8Array(buffer);
+            const db = new SQL.Database(data);
+
+            const devicesStmt = db.prepare("SELECT * FROM equipment");
+            const importedDevices = [];
+            while (devicesStmt.step()) { importedDevices.push(devicesStmt.getAsObject()); }
+            devicesStmt.free();
+
+            const recordsStmt = db.prepare("SELECT * FROM maintenance_records");
+            const importedRecords = [];
+            while (recordsStmt.step()) { importedRecords.push(recordsStmt.getAsObject()); }
+            recordsStmt.free();
+
+            if (importedDevices.length === 0 && importedRecords.length === 0) {
+                alert('导入的数据库为空，操作取消。');
+                return;
+            }
+
+            await clearStore(STORE_RECORDS);
+            await clearStore(STORE_EQUIPMENT);
+
+            for (const dev of importedDevices) {
+                await addToStore(STORE_EQUIPMENT, {
+                    id: dev.id,
+                    device_id: dev.device_id,
+                    model: dev.model,
+                    name: dev.name,
+                    start_date: dev.start_date || null,
+                    device_no: dev.device_no || null,
+                    fixed_asset_no: dev.fixed_asset_no || null,
+                    maintenance_cycle: dev.maintenance_cycle || null,
+                    status: dev.status || '正常',
+                    last_maintenance_date: dev.last_maintenance_date || null,
+                    workshop: dev.workshop,
+                    process: dev.process,
+                    created_at: dev.created_at || null
+                });
+            }
+
+            for (const rec of importedRecords) {
+                await addToStore(STORE_RECORDS, {
+                    id: rec.id,
+                    equipment_id: rec.equipment_id,
+                    record_type: rec.record_type,
+                    record_time: rec.record_time,
+                    description: rec.description || null,
+                    created_at: rec.created_at || null
+                });
+            }
+
+            alert('✅ 数据导入成功！共导入 ' + importedDevices.length + ' 台设备，' + importedRecords.length + ' 条维保记录。');
+            await loadDevices();
+            if (state.currentPage === 'detail') { showPage('list'); }
+        } catch (e) {
+            console.error(e);
+            alert('导入失败：' + e.message);
+        }
+    }
+
+    // ================================================================
+    // 5. UI 控制器
+    // ================================================================
+    let state = {
+        currentPage: 'list',
+        currentDeviceId: null,
+        filterWorkshop: '',
+        filterProcess: '',
+    };
+
+    const $ = id => document.getElementById(id);
+    const pageList = $('pageList');
+    const pageDetail = $('pageDetail');
+    const deviceListContainer = $('deviceListContainer');
+    const detailContent = $('detailContent');
+    const filterWorkshop = $('filterWorkshop');
+    const filterProcess = $('filterProcess');
+    const filterBtn = $('filterBtn');
+    const resetFilterBtn = $('resetFilterBtn');
+    const totalCount = $('totalCount');
+    const filterHint = $('filterHint');
+    const fabAddRecord = $('fabAddRecord');
+    const globalBackBtn = $('globalBackBtn');
+    const pageTitle = $('pageTitle');
+    const headerRightBtn = $('headerRightBtn');
+    const modalDevice = $('modalDevice');
+    const modalRecord = $('modalRecord');
+    const modalConfirm = $('modalConfirm');
+    const deviceForm = $('deviceForm');
+    const recordForm = $('recordForm');
+    const editDeviceId = $('editDeviceId');
+    const modalDeviceTitle = $('modalDeviceTitle');
+    const confirmMessage = $('confirmMessage');
+    const confirmDeleteBtn = $('confirmDeleteBtn');
+
+    // ================================================================
+    // 6. 渲染函数
+    // ================================================================
+    function escapeHtml(text) { if (!text) return ''; const div = document.createElement('div'); div.textContent = text; return div.innerHTML; }
+
+    function renderDeviceList(devices) {
+        if (!devices || devices.length === 0) {
+            deviceListContainer.innerHTML = `<div class="empty-state"><div class="empty-icon">📭</div><div class="empty-text">暂无设备</div><div class="empty-hint">点击右上角「＋」添加设备</div></div>`;
+            totalCount.textContent = '0';
+            return;
+        }
+        let html = '';
+        for (const d of devices) {
+            const statusMap = { '正常': 'status-normal', '带维修': 'status-repair', '带保养': 'status-maintain' };
+            const statusCls = statusMap[d.status] || 'status-normal';
+            html += `<div class="card device-item" data-id="${d.id}" onclick="showDetail(${d.id})">
+                <div class="device-name">${escapeHtml(d.name)} <span class="device-badge">${escapeHtml(d.device_id)}</span></div>
+                <div class="device-meta"><span>🏷️ ${escapeHtml(d.model)}</span><span>🏭 ${escapeHtml(d.workshop)}</span><span>⚙️ ${escapeHtml(d.process)}</span><span>📅 ${d.start_date || '未设置'}</span></div>
+                <div class="device-status ${statusCls}">${escapeHtml(d.status)}</div><span class="device-arrow">›</span>
+            </div>`;
+        }
+        deviceListContainer.innerHTML = html;
+        totalCount.textContent = devices.length;
+    }
+
+    function renderDetail(device, records) {
+        if (!device) { detailContent.innerHTML = `<div class="empty-state"><div class="empty-text">设备不存在</div></div>`; return; }
+        const statusMap = { '正常': 'tag-normal', '带维修': 'tag-repair', '带保养': 'tag-maintain' };
+        const statusCls = statusMap[device.status] || 'tag-normal';
+
+        let infoHtml = `<div class="card detail-info"><h3 style="font-size:18px; margin-bottom:10px;">📋 设备信息</h3>
+            <div class="info-row"><span class="info-label">设备ID</span><span class="info-value">${escapeHtml(device.device_id)}</span></div>
+            <div class="info-row"><span class="info-label">设备名称</span><span class="info-value">${escapeHtml(device.name)}</span></div>
+            <div class="info-row"><span class="info-label">设备型号</span><span class="info-value">${escapeHtml(device.model)}</span></div>
+            <div class="info-row"><span class="info-label">启用时间</span><span class="info-value">${device.start_date || '未设置'}</span></div>
+            <div class="info-row"><span class="info-label">设备编号</span><span class="info-value">${device.device_no || '未设置'}</span></div>
+            <div class="info-row"><span class="info-label">固定资产号</span><span class="info-value">${device.fixed_asset_no || '未设置'}</span></div>
+            <div class="info-row"><span class="info-label">保养周期</span><span class="info-value">${device.maintenance_cycle || '未设置'}</span></div>
+            <div class="info-row"><span class="info-label">状态</span><span class="info-value"><span class="status-tag ${statusCls}">${escapeHtml(device.status)}</span></span></div>
+            <div class="info-row"><span class="info-label">上次保养</span><span class="info-value">${device.last_maintenance_date || '未记录'}</span></div>
+            <div class="info-row"><span class="info-label">使用车间</span><span class="info-value">${escapeHtml(device.workshop)}</span></div>
+            <div class="info-row"><span class="info-label">使用工序</span><span class="info-value">${escapeHtml(device.process)}</span></div>
+            <div class="action-row" style="margin-top:12px; padding-top:10px; border-top:1px solid var(--border);">
+                <button class="btn btn-outline btn-sm" onclick="editDevice(${device.id})">✏️ 编辑</button>
+                <button class="btn btn-danger btn-sm" onclick="confirmDeleteDevice(${device.id}, '${escapeHtml(device.name)}')">🗑 删除</button>
+            </div>
+        </div>`;
+
+        let recordsHtml = `<div class="card" style="margin-top:4px;"><div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;"><h3 style="font-size:17px;">📝 维保记录 (${records.length})</h3><button class="btn btn-success btn-sm" onclick="openAddRecord()" style="width:auto;">＋ 添加</button></div><div class="record-list">`;
+        if (records.length === 0) {
+            recordsHtml += `<div style="padding:20px 0; text-align:center; color:var(--text-muted);">暂无维保记录</div>`;
+        } else {
+            const typeMap = { '维修': '🔧', '保养': '🛠', '调试': '⚙️' };
+            const typeClsMap = { '维修': 'type-repair', '保养': 'type-maintain', '调试': 'type-debug' };
+            for (const r of records) {
+                const icon = typeMap[r.record_type] || '📌';
+                const cls = typeClsMap[r.record_type] || 'type-repair';
+                const time = r.record_time ? r.record_time.replace('T', ' ') : '未知时间';
+                recordsHtml += `<div class="record-item"><div class="record-icon ${cls}">${icon}</div><div class="record-content"><div class="record-type">${escapeHtml(r.record_type)}</div><div class="record-desc">${escapeHtml(r.description || '无描述')}</div><div class="record-time">🕐 ${escapeHtml(time)}</div></div><button class="record-del" onclick="confirmDeleteRecord(${r.id})" title="删除">✕</button></div>`;
+            }
+        }
+        recordsHtml += `</div></div>`;
+        detailContent.innerHTML = infoHtml + recordsHtml;
+    }
+
+    async function renderFilterOptions() {
+        const workshops = await getDistinctWorkshops();
+        const sel = filterWorkshop;
+        const currentVal = sel.value;
+        sel.innerHTML = `<option value="">全部车间</option>`;
+        for (const w of workshops) sel.innerHTML += `<option value="${escapeHtml(w)}">${escapeHtml(w)}</option>`;
+        sel.value = currentVal || state.filterWorkshop || '';
+
+        const workshop = filterWorkshop.value || '';
+        const processes = await getDistinctProcesses(workshop);
+        const sel2 = filterProcess;
+        const currentVal2 = sel2.value;
+        sel2.innerHTML = `<option value="">全部工序</option>`;
+        for (const p of processes) sel2.innerHTML += `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`;
+        sel2.value = currentVal2 || state.filterProcess || '';
+    }
+
+    // ================================================================
+    // 7. 业务逻辑
+    // ================================================================
+    function showPage(page, title) {
+        pageList.classList.toggle('active', page === 'list');
+        pageDetail.classList.toggle('active', page === 'detail');
+        state.currentPage = page;
+        if (page === 'list') {
+            pageTitle.textContent = '设备维保管理';
+            globalBackBtn.style.visibility = 'hidden';
+            headerRightBtn.textContent = '＋';
+            headerRightBtn.title = '添加设备';
+            headerRightBtn.style.display = 'flex';
+            fabAddRecord.style.display = 'none';
+        } else {
+            pageTitle.textContent = title || '设备详情';
+            globalBackBtn.style.visibility = 'visible';
+            headerRightBtn.textContent = '✎';
+            headerRightBtn.title = '编辑设备';
+            headerRightBtn.style.display = 'flex';
+            fabAddRecord.style.display = 'flex';
+        }
+        document.querySelector('.page.active')?.scrollTo(0, 0);
+    }
+
+    async function loadDevices() {
+        const workshop = filterWorkshop.value || '';
+        const process = filterProcess.value || '';
+        state.filterWorkshop = workshop;
+        state.filterProcess = process;
+        try {
+            const list = await getAllEquipment(workshop, process);
+            renderDeviceList(list);
+            let hint = '显示全部';
+            if (workshop && process) hint = `${workshop} · ${process}`;
+            else if (workshop) hint = workshop;
+            else if (process) hint = process;
+            filterHint.textContent = hint + (list.length ? ` (${list.length}台)` : '');
+            await renderFilterOptions();
+        } catch (e) {
+            console.error(e);
+            deviceListContainer.innerHTML = `<div class="empty-state"><div class="empty-text">加载失败</div></div>`;
+        }
+    }
+
+    async function showDetail(id) {
+        state.currentDeviceId = id;
+        try {
+            const device = await getEquipmentById(id);
+            if (!device) { alert('设备不存在'); return; }
+            const records = await getRecordsByEquipment(id);
+            renderDetail(device, records);
+            showPage('detail', device.name);
+            $('recordEquipmentId').value = id;
+        } catch (e) { console.error(e); alert('加载详情失败'); }
+    }
+
+    function openAddDevice(editData = null) {
+        const isEdit = !!editData;
+        modalDeviceTitle.textContent = isEdit ? '编辑设备' : '添加设备';
+        editDeviceId.value = isEdit ? editData.id : '';
+        $('fDeviceId').value = isEdit ? editData.device_id : '';
+        $('fModel').value = isEdit ? editData.model : '';
+        $('fName').value = isEdit ? editData.name : '';
+        $('fStartDate').value = isEdit ? editData.start_date || '' : '';
+        $('fDeviceNo').value = isEdit ? editData.device_no || '' : '';
+        $('fFixedAssetNo').value = isEdit ? editData.fixed_asset_no || '' : '';
+        $('fMaintenanceCycle').value = isEdit ? editData.maintenance_cycle || '' : '';
+        $('fStatus').value = isEdit ? editData.status || '正常' : '正常';
+        $('fLastMaintenance').value = isEdit ? editData.last_maintenance_date || '' : '';
+        $('fWorkshop').value = isEdit ? editData.workshop : '';
+        $('fProcess').value = isEdit ? editData.process : '';
+        modalDevice.classList.add('active');
+        setTimeout(() => $('fDeviceId').focus(), 200);
+    }
+
+    function editDevice(id) { getEquipmentById(id).then(d => { if (d) openAddDevice(d); }).catch(console.error); }
+
+    function openAddRecord() {
+        const id = state.currentDeviceId;
+        if (!id) return alert('请先选择设备');
+        $('recordEquipmentId').value = id;
+        const now = new Date();
+        const iso = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0') + '-' + String(now.getDate()).padStart(2,'0') + 'T' + String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
+        $('fRecordTime').value = iso;
+        $('fRecordType').value = '保养';
+        $('fRecordDesc').value = '';
+        modalRecord.classList.add('active');
+    }
+
+    let deleteCallback = null;
+    function confirmDeleteRecord(id) {
+        confirmMessage.textContent = '确定要删除这条维保记录吗？';
+        modalConfirm.classList.add('active');
+        deleteCallback = async () => {
+            try {
+                await deleteRecord(id);
+                modalConfirm.classList.remove('active');
+                if (state.currentDeviceId) {
+                    const device = await getEquipmentById(state.currentDeviceId);
+                    const records = await getRecordsByEquipment(state.currentDeviceId);
+                    renderDetail(device, records);
+                }
+            } catch (e) { console.error(e); alert('删除失败'); }
+        };
+    }
+
+    function confirmDeleteDevice(id, name) {
+        confirmMessage.textContent = `确定要删除设备「${name}」及其所有维保记录吗？`;
+        modalConfirm.classList.add('active');
+        deleteCallback = async () => {
+            try {
+                await deleteEquipment(id);
+                modalConfirm.classList.remove('active');
+                if (state.currentDeviceId == id) { showPage('list'); }
+                await loadDevices();
+            } catch (e) { console.error(e); alert('删除失败'); }
+        };
+    }
+
+    // ================================================================
+    // 8. 事件绑定
+    // ================================================================
+    globalBackBtn.addEventListener('click', () => { if (state.currentPage === 'detail') { showPage('list'); loadDevices(); } });
+    headerRightBtn.addEventListener('click', () => { if (state.currentPage === 'list') { openAddDevice(null); } else { const id = state.currentDeviceId; if (id) editDevice(id); } });
+    filterBtn.addEventListener('click', loadDevices);
+    resetFilterBtn.addEventListener('click', () => { filterWorkshop.value = ''; filterProcess.value = ''; loadDevices(); });
+    filterWorkshop.addEventListener('change', async () => {
+        const workshop = filterWorkshop.value || '';
+        const processes = await getDistinctProcesses(workshop);
+        const sel = filterProcess;
+        const currentVal = sel.value;
+        sel.innerHTML = `<option value="">全部工序</option>`;
+        for (const p of processes) sel.innerHTML += `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`;
+        if (currentVal && processes.includes(currentVal)) { sel.value = currentVal; }
+    });
+    fabAddRecord.addEventListener('click', openAddRecord);
+
+    deviceForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const data = {
+            device_id: $('fDeviceId').value.trim(),
+            model: $('fModel').value.trim(),
+            name: $('fName').value.trim(),
+            start_date: $('fStartDate').value || null,
+            device_no: $('fDeviceNo').value.trim() || null,
+            fixed_asset_no: $('fFixedAssetNo').value.trim() || null,
+            maintenance_cycle: $('fMaintenanceCycle').value.trim() || null,
+            status: $('fStatus').value || '正常',
+            last_maintenance_date: $('fLastMaintenance').value || null,
+            workshop: $('fWorkshop').value.trim(),
+            process: $('fProcess').value.trim(),
+            created_at: new Date().toISOString()
+        };
+        if (!data.device_id || !data.model || !data.name || !data.workshop || !data.process) {
+            alert('请填写所有必填字段（带 * 号）');
+            return;
+        }
+        const editId = editDeviceId.value;
+        try {
+            if (editId) { await updateEquipment(parseInt(editId), data); } else { await addEquipment(data); }
+            modalDevice.classList.remove('active');
+            deviceForm.reset();
+            editDeviceId.value = '';
+            await loadDevices();
+            if (state.currentPage === 'detail' && state.currentDeviceId) {
+                const device = await getEquipmentById(state.currentDeviceId);
+                const records = await getRecordsByEquipment(state.currentDeviceId);
+                renderDetail(device, records);
+            }
+        } catch (e) { console.error(e); alert(e.message || '保存失败，请检查设备ID是否重复'); }
+    });
+
+    recordForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const equipmentId = parseInt($('recordEquipmentId').value);
+        const recordType = $('fRecordType').value;
+        const recordTime = $('fRecordTime').value;
+        const description = $('fRecordDesc').value.trim() || null;
+        if (!equipmentId || !recordType || !recordTime) { alert('请填写完整信息'); return; }
+        try {
+            await addRecord({ equipment_id: equipmentId, record_type: recordType, record_time: recordTime, description, created_at: new Date().toISOString() });
+            if (recordType === '保养') {
+                const datePart = recordTime.split('T')[0];
+                await updateEquipmentLastMaintenance(equipmentId, datePart);
+            }
+            modalRecord.classList.remove('active');
+            recordForm.reset();
+            const device = await getEquipmentById(equipmentId);
+            const records = await getRecordsByEquipment(equipmentId);
+            renderDetail(device, records);
+        } catch (e) { console.error(e); alert('保存记录失败'); }
+    });
+
+    document.querySelectorAll('[data-close]').forEach(el => {
+        el.addEventListener('click', () => { const id = el.dataset.close; $(id).classList.remove('active'); });
+    });
+    document.querySelectorAll('.modal-overlay').forEach(el => {
+        el.addEventListener('click', (e) => { if (e.target === el) el.classList.remove('active'); });
+    });
+
+    confirmDeleteBtn.addEventListener('click', () => { if (deleteCallback) { deleteCallback(); deleteCallback = null; } });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') { document.querySelectorAll('.modal-overlay.active').forEach(el => el.classList.remove('active')); }
+    });
+
+    // ================================================================
+    // 9. 启动应用
+    // ================================================================
+    async function initApp() {
+        try {
+            await openDatabase();
+            await initSampleData();
+            await loadDevices();
+            showPage('list');
+            // 检查 sql.js 状态（若仍未就绪则触发加载）
+            setTimeout(() => {
+                if (!SQL_MODULE) {
+                    // 如果还没有加载成功，再尝试一次
+                    initSqlJsModule().catch(e => {
+                        console.warn('sql.js 初始化失败:', e.message);
+                    });
+                }
+            }, 500);
+        } catch (e) {
+            console.error('初始化失败:', e);
+            alert('应用初始化失败: ' + e.message);
+        }
+    }
+
+    // 暴露全局函数
+    window.showDetail = showDetail;
+    window.editDevice = editDevice;
+    window.openAddRecord = openAddRecord;
+    window.openAddDevice = openAddDevice;
+    window.confirmDeleteRecord = confirmDeleteRecord;
+    window.confirmDeleteDevice = confirmDeleteDevice;
+    window.exportDatabase = exportDatabase;
+    window.importDatabase = importDatabase;
+
+    document.addEventListener('DOMContentLoaded', initApp);
+    if (document.readyState === 'complete' || document.readyState === 'interactive') {
+        initApp();
+    }
+</script>
+
+</body>
+</html>
